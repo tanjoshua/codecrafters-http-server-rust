@@ -1,36 +1,60 @@
-use std::io::{BufRead, BufReader, Write};
-use std::net::{TcpListener, TcpStream};
+use bytes::BytesMut;
+mod h1;
+use h1::{decode_http_request, Method, Request, Response};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+};
 
-fn main() {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    println!("Logs from your program will appear here!");
-
-    let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
-
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                handle_connection(stream);
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let listener = TcpListener::bind("127.0.0.1:4221").await?;
+    loop {
+        let (stream, socket_addr) = listener.accept().await?;
+        tokio::spawn(async move {
+            println!("New connection: {}", socket_addr);
+            if let Err(e) = process(stream).await {
+                eprintln!("Could not process connection: {}", e);
             }
-            Err(e) => {
-                println!("error: {}", e);
-            }
-        }
+        });
     }
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    println!("accepted new connection");
-    let reader = BufReader::new(&stream);
-    let request = reader.lines().next().unwrap().unwrap();
-    match &request[..] {
-        "GET / HTTP/1.1" => {
-            let resp = "HTTP/1.1 200 OK\r\n\r\n";
-            stream.write_all(resp.as_bytes()).unwrap();
+async fn process(mut stream: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+    let mut buf = BytesMut::with_capacity(4096);
+    stream.read_buf(&mut buf).await?;
+
+    let request = decode_http_request(buf);
+
+    match request {
+        Ok(request) => {
+            println!("{:?} request received at {}", request.method, request.uri);
+            let response = handle_request(request);
+            let response_bytes: Vec<u8> = response.into();
+            if stream.write_all(&response_bytes).await.is_err() {
+                eprintln!("Error writing response");
+            }
         }
-        _ => {
-            let resp = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
-            stream.write_all(resp.as_bytes()).unwrap();
+        Err(e) => {
+            eprintln!("Error occurred {}", e);
         }
+    }
+
+    Ok(())
+}
+
+fn handle_request(request: Request) -> Response {
+    match (request.method, request.uri.as_str()) {
+        (Method::Get, "/") => {
+            println!("request sent to / endpoint");
+            Response {
+                code: 200,
+                content: None,
+            }
+        }
+        (_, _) => Response {
+            code: 404,
+            content: None,
+        },
     }
 }
