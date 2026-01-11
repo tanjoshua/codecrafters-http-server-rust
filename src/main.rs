@@ -47,12 +47,12 @@ async fn process(
         Ok(request) => {
             println!("{:?} request received at {}", request.method, request.uri);
             // set encoding,
-            let encoding = request.headers.get("Accept-Encoding").cloned();
 
+            let encodings = request.headers.get("Accept-Encoding").cloned();
             let mut response = handle_request(config, request);
 
-            if let Some(encoding) = encoding
-                && encoding == "gzip"
+            if let Some(encodings) = encodings
+                && encodings.split(",").map(|s| s.trim()).any(|s| s == "gzip")
             {
                 response
                     .headers
