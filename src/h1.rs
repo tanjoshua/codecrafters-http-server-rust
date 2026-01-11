@@ -17,6 +17,17 @@ impl std::fmt::Display for Request {
 pub struct Response {
     pub code: u16,
     pub content: Content,
+    pub headers: HashMap<String, String>,
+}
+
+impl Response {
+    pub fn new(code: u16, content: Content) -> Self {
+        Response {
+            code,
+            content,
+            headers: HashMap::new(),
+        }
+    }
 }
 
 pub enum Content {
@@ -27,7 +38,7 @@ pub enum Content {
 }
 
 impl From<Response> for Vec<u8> {
-    fn from(response: Response) -> Self {
+    fn from(mut response: Response) -> Self {
         let code_and_reason = match response.code {
             200 => "200 OK",
             201 => "201 Created",
@@ -39,28 +50,38 @@ impl From<Response> for Vec<u8> {
         let mut content_bytes = Vec::new();
         match response.content {
             Content::Text(text_content) => {
-                let headers = format!(
-                    "Content-Type: text/plain\r\nContent-Length: {}\r\n\r\n",
-                    text_content.len()
-                );
-                header_str.push_str(headers.as_str());
+                response
+                    .headers
+                    .insert("Content-Type".into(), "text/plain".into());
+                response
+                    .headers
+                    .insert("Content-Length".into(), text_content.len().to_string());
+
                 content_bytes = text_content.into_bytes();
             }
             Content::Bytes(bytes) => {
-                let headers = format!("Content-Length: {}\r\n\r\n", bytes.len());
-                header_str.push_str(headers.as_str());
+                response
+                    .headers
+                    .insert("Content-Length".into(), bytes.len().to_string());
                 content_bytes = bytes;
             }
             Content::OctetStream(bytes) => {
-                let headers = format!(
-                    "Content-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n",
-                    bytes.len()
-                );
-                header_str.push_str(headers.as_str());
+                response
+                    .headers
+                    .insert("Content-Type".into(), "application/octet-stream".into());
+                response
+                    .headers
+                    .insert("Content-Length".into(), bytes.len().to_string());
                 content_bytes = bytes;
             }
             Content::Empty => header_str.push_str("\r\n"),
         };
+
+        // Construct headers
+        for (k, v) in response.headers {
+            header_str.push_str(format!("{}: {}\r\n", k, v).as_str());
+        }
+        header_str.push_str("\r\n");
 
         let mut response_bytes = header_str.into_bytes();
         response_bytes.extend_from_slice(content_bytes.as_ref());
