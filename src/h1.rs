@@ -21,6 +21,7 @@ pub struct Response {
 pub enum Content {
     Text(String),
     Bytes(Vec<u8>),
+    OctetStream(Vec<u8>),
     Empty,
 }
 
@@ -45,6 +46,14 @@ impl From<Response> for Vec<u8> {
             }
             Content::Bytes(bytes) => {
                 let headers = format!("Content-Length: {}\r\n\r\n", bytes.len());
+                header_str.push_str(headers.as_str());
+                content_bytes = bytes;
+            }
+            Content::OctetStream(bytes) => {
+                let headers = format!(
+                    "Content-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n",
+                    bytes.len()
+                );
                 header_str.push_str(headers.as_str());
                 content_bytes = bytes;
             }
