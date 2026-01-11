@@ -69,6 +69,10 @@ fn handle_request(config: Arc<Config>, request: Request) -> Response {
         return handle_files(config, request);
     }
 
+    if request.uri.starts_with("/files/") && request.method == Method::Post {
+        return handle_post_files(config, request);
+    }
+
     match (request.method, request.uri.as_str()) {
         (Method::Get, "/") => Response {
             code: 200,
@@ -90,6 +94,35 @@ fn handle_request(config: Arc<Config>, request: Request) -> Response {
             code: 404,
             content: Content::Empty,
         },
+    }
+}
+
+fn handle_post_files(config: Arc<Config>, request: Request) -> Response {
+    let mut tokens = request.uri.split("/files/");
+    let Some(filename) = tokens.nth(1) else {
+        return Response {
+            code: 400,
+            content: Content::Text("No filename found".into()),
+        };
+    };
+
+    let Some(dir) = &config.directory else {
+        return Response {
+            code: 404,
+            content: Content::Text("No file directory found".into()),
+        };
+    };
+
+    let Ok(_) = std::fs::write(format!("{}{}", dir, filename), request.content) else {
+        return Response {
+            code: 404,
+            content: Content::Text("Directory path does not exist".into()),
+        };
+    };
+
+    Response {
+        code: 201,
+        content: Content::Empty,
     }
 }
 

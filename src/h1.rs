@@ -5,6 +5,7 @@ pub struct Request {
     pub method: Method,
     pub uri: String,
     pub headers: HashMap<String, String>,
+    pub content: Vec<u8>,
 }
 
 impl std::fmt::Display for Request {
@@ -29,6 +30,7 @@ impl From<Response> for Vec<u8> {
     fn from(response: Response) -> Self {
         let code_and_reason = match response.code {
             200 => "200 OK",
+            201 => "201 Created",
             404 => "404 Not Found",
             _ => "500 Internal Server Error",
         };
@@ -79,6 +81,8 @@ pub enum DecodeHttpError {
     InvalidHeader,
     #[error("Invalid method.")]
     InvalidMethod(String),
+    #[error("Error parsing content.")]
+    InvalidContent,
 }
 
 pub fn decode_http_request(buf: BytesMut) -> Result<Request, DecodeHttpError> {
@@ -112,6 +116,7 @@ pub fn decode_http_request(buf: BytesMut) -> Result<Request, DecodeHttpError> {
         _ => return Err(DecodeHttpError::InvalidMethod(method.into())),
     };
 
+    // parse headers
     let mut headers_map = HashMap::new();
     for header_line in headers {
         let header = header_line.split_once(":");
@@ -124,9 +129,26 @@ pub fn decode_http_request(buf: BytesMut) -> Result<Request, DecodeHttpError> {
         );
     }
 
+    // parse content
+    let mut content = Vec::new();
+    let content_start = headers_end + 4;
+    if let (Some(content_type), Some(content_length)) = (
+        headers_map.get("Content-Type"),
+        headers_map.get("Content-Length"),
+    ) {
+        let Ok(content_length_usize) = content_length.parse::<usize>() else {
+            return Err(DecodeHttpError::InvalidContent);
+        };
+
+        if content_type == "application/octet-stream" {
+            content.extend_from_slice(&buf[content_start..content_start + content_length_usize]);
+        }
+    }
+
     Ok(Request {
         method,
         uri: request_uri.into(),
+        content,
         headers: headers_map,
     })
 }
