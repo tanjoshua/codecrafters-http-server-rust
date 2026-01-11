@@ -8,5 +8,6 @@ rust-version = "1.92"
 [dependencies]
 anyhow = "1.0.68"                                # error handling
 bytes = "1.11.0"
+flate2 = "1.1.5"
 thiserror = "1.0.38"                             # error handling
 tokio = { version = "1.49.0", features = ["full"] }

@@ -1,4 +1,5 @@
 use bytes::BytesMut;
+use std::io::prelude::*;
 use std::{collections::HashMap, fmt};
 
 pub struct Request {
@@ -18,6 +19,7 @@ pub struct Response {
     pub code: u16,
     pub content: Content,
     pub headers: HashMap<String, String>,
+    pub content_encoding: Option<Encoding>,
 }
 
 impl Response {
@@ -26,6 +28,7 @@ impl Response {
             code,
             content,
             headers: HashMap::new(),
+            content_encoding: None,
         }
     }
 }
@@ -37,8 +40,57 @@ pub enum Content {
     Empty,
 }
 
+pub enum Encoding {
+    Gzip,
+}
+
 impl From<Response> for Vec<u8> {
     fn from(mut response: Response) -> Self {
+        let mut content_bytes = Vec::new();
+        match response.content {
+            Content::Text(text_content) => {
+                response
+                    .headers
+                    .insert("Content-Type".into(), "text/plain".into());
+
+                content_bytes = text_content.into_bytes();
+            }
+            Content::Bytes(bytes) => {
+                content_bytes = bytes;
+            }
+            Content::OctetStream(bytes) => {
+                response
+                    .headers
+                    .insert("Content-Type".into(), "application/octet-stream".into());
+                content_bytes = bytes;
+            }
+            Content::Empty => {}
+        };
+
+        // encoding
+        match response.content_encoding {
+            None => {}
+            Some(Encoding::Gzip) => {
+                use flate2::{Compression, write::GzEncoder};
+                response
+                    .headers
+                    .insert("Content-Encoding".into(), "gzip".into());
+
+                // encode content bytes
+                let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+
+                // TODO: handle the unwrap
+                encoder.write_all(&content_bytes).unwrap();
+                content_bytes = encoder.finish().unwrap();
+            }
+        }
+
+        // calculate the content length
+        response
+            .headers
+            .insert("Content-Length".into(), content_bytes.len().to_string());
+
+        // Construct headers
         let code_and_reason = match response.code {
             200 => "200 OK",
             201 => "201 Created",
@@ -47,37 +99,6 @@ impl From<Response> for Vec<u8> {
         };
 
         let mut header_str = format!("HTTP/1.1 {}\r\n", code_and_reason);
-        let mut content_bytes = Vec::new();
-        match response.content {
-            Content::Text(text_content) => {
-                response
-                    .headers
-                    .insert("Content-Type".into(), "text/plain".into());
-                response
-                    .headers
-                    .insert("Content-Length".into(), text_content.len().to_string());
-
-                content_bytes = text_content.into_bytes();
-            }
-            Content::Bytes(bytes) => {
-                response
-                    .headers
-                    .insert("Content-Length".into(), bytes.len().to_string());
-                content_bytes = bytes;
-            }
-            Content::OctetStream(bytes) => {
-                response
-                    .headers
-                    .insert("Content-Type".into(), "application/octet-stream".into());
-                response
-                    .headers
-                    .insert("Content-Length".into(), bytes.len().to_string());
-                content_bytes = bytes;
-            }
-            Content::Empty => header_str.push_str("\r\n"),
-        };
-
-        // Construct headers
         for (k, v) in response.headers {
             header_str.push_str(format!("{}: {}\r\n", k, v).as_str());
         }

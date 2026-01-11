@@ -8,6 +8,8 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
+use crate::h1::Encoding;
+
 struct Config {
     directory: Option<String>,
 }
@@ -46,17 +48,16 @@ async fn process(
     match request {
         Ok(request) => {
             println!("{:?} request received at {}", request.method, request.uri);
-            // set encoding,
-
+            // get encodings for response before request passed to handler
             let encodings = request.headers.get("Accept-Encoding").cloned();
+
             let mut response = handle_request(config, request);
 
+            // set encoding,
             if let Some(encodings) = encodings
                 && encodings.split(",").map(|s| s.trim()).any(|s| s == "gzip")
             {
-                response
-                    .headers
-                    .insert("Content-Encoding".into(), "gzip".into());
+                response.content_encoding = Some(Encoding::Gzip);
             }
 
             let response_bytes: Vec<u8> = response.into();
