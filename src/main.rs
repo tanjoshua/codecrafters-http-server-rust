@@ -1,6 +1,6 @@
 use bytes::BytesMut;
 mod h1;
-use h1::{decode_http_request, Method, Request, Response};
+use h1::{decode_http_request, Content, Method, Request, Response};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -44,17 +44,35 @@ async fn process(mut stream: TcpStream) -> Result<(), Box<dyn std::error::Error>
 }
 
 fn handle_request(request: Request) -> Response {
+    if request.uri.starts_with("/echo/") && request.method == Method::Get {
+        return handle_echo(request);
+    }
+
     match (request.method, request.uri.as_str()) {
         (Method::Get, "/") => {
             println!("request sent to / endpoint");
             Response {
                 code: 200,
-                content: None,
+                content: Content::Empty,
             }
         }
         (_, _) => Response {
             code: 404,
-            content: None,
+            content: Content::Empty,
+        },
+    }
+}
+
+fn handle_echo(request: Request) -> Response {
+    let mut tokens = request.uri.split("/echo/");
+    match tokens.nth(1) {
+        Some(message) => Response {
+            code: 200,
+            content: Content::Text(message.to_string()),
+        },
+        None => Response {
+            code: 400,
+            content: Content::Text(String::from("No string found")),
         },
     }
 }

@@ -14,36 +14,50 @@ impl std::fmt::Display for Request {
 
 pub struct Response {
     pub code: u16,
-    pub content: Option<Vec<u8>>,
+    pub content: Content,
+}
+
+pub enum Content {
+    Text(String),
+    Bytes(Vec<u8>),
+    Empty,
 }
 
 impl From<Response> for Vec<u8> {
     fn from(response: Response) -> Self {
-        let mut status_line = String::from("HTTP/1.1 ");
         let code_and_reason = match response.code {
             200 => "200 OK",
             404 => "404 Not Found",
             _ => "500 Internal Server Error",
         };
 
-        status_line.push_str(code_and_reason);
+        let mut header_str = format!("HTTP/1.1 {}\r\n", code_and_reason);
+        let mut content_bytes = Vec::new();
+        match response.content {
+            Content::Text(text_content) => {
+                let headers = format!(
+                    "Content-Type: text/plain\r\nContent-Length: {}\r\n\r\n",
+                    text_content.len()
+                );
+                header_str.push_str(headers.as_str());
+                content_bytes = text_content.into_bytes();
+            }
+            Content::Bytes(bytes) => {
+                let headers = format!("Content-Length: {}\r\n\r\n", bytes.len());
+                header_str.push_str(headers.as_str());
+                content_bytes = bytes;
+            }
+            Content::Empty => header_str.push_str("\r\n"),
+        };
 
-        let mut content_length = 0;
-        if let Some(content) = response.content.as_ref() {
-            content_length = content.len();
-        }
-        let mut response_bytes =
-            format!("{status_line}\r\nContent-Length: {content_length}\r\n\r\n").into_bytes();
-
-        if let Some(content) = response.content {
-            response_bytes.extend_from_slice(content.as_ref());
-        }
+        let mut response_bytes = header_str.into_bytes();
+        response_bytes.extend_from_slice(content_bytes.as_ref());
 
         response_bytes
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Method {
     Get,
     Post,
