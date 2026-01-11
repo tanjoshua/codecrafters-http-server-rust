@@ -1,6 +1,6 @@
 use bytes::BytesMut;
 mod h1;
-use h1::{decode_http_request, Content, Method, Request, Response};
+use h1::{Content, Method, Request, Response, decode_http_request};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -49,11 +49,20 @@ fn handle_request(request: Request) -> Response {
     }
 
     match (request.method, request.uri.as_str()) {
-        (Method::Get, "/") => {
-            println!("request sent to / endpoint");
+        (Method::Get, "/") => Response {
+            code: 200,
+            content: Content::Empty,
+        },
+        (Method::Get, "/user-agent") => {
+            let Some(user_agent) = request.headers.get("User-Agent") else {
+                return Response {
+                    code: 400,
+                    content: Content::Text("No user agent found".into()),
+                };
+            };
             Response {
+                content: Content::Text(user_agent.clone()),
                 code: 200,
-                content: Content::Empty,
             }
         }
         (_, _) => Response {

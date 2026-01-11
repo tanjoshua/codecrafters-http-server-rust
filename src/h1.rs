@@ -1,9 +1,10 @@
 use bytes::BytesMut;
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 pub struct Request {
     pub method: Method,
     pub uri: String,
+    pub headers: HashMap<String, String>,
 }
 
 impl std::fmt::Display for Request {
@@ -102,8 +103,21 @@ pub fn decode_http_request(buf: BytesMut) -> Result<Request, DecodeHttpError> {
         _ => return Err(DecodeHttpError::InvalidMethod(method.into())),
     };
 
+    let mut headers_map = HashMap::new();
+    for header_line in headers {
+        let header = header_line.split_once(":");
+        let Some((header_name, header_value)) = header else {
+            return Err(DecodeHttpError::InvalidHeader);
+        };
+        headers_map.insert(
+            header_name.trim().to_string(),
+            header_value.trim().to_string(),
+        );
+    }
+
     Ok(Request {
         method,
         uri: request_uri.into(),
+        headers: headers_map,
     })
 }
