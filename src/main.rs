@@ -1,18 +1,17 @@
-use std::sync::Arc;
-
-use bytes::{Buf, BytesMut};
+mod cc;
+mod config;
 mod h1;
+use config::Config;
 use h1::{Content, Method, Request, Response, decode_http_request};
+use std::sync::Arc;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 
-use crate::h1::Encoding;
+use bytes::{Buf, BytesMut};
 
-struct Config {
-    directory: Option<String>,
-}
+use crate::h1::Encoding;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -101,68 +100,23 @@ async fn process(
 
 fn handle_request(config: Arc<Config>, request: Request) -> Response {
     if request.uri.starts_with("/echo/") && request.method == Method::Get {
-        return handle_echo(request);
+        return cc::handle_echo(request);
     }
 
     if request.uri.starts_with("/files/") && request.method == Method::Get {
-        return handle_files(config, request);
+        return cc::handle_files(config, request);
     }
 
     if request.uri.starts_with("/files/") && request.method == Method::Post {
-        return handle_post_files(config, request);
+        return cc::handle_post_files(config, request);
+    }
+
+    if request.uri == "/user-agent" && request.method == Method::Get {
+        return cc::handle_user_agent(request);
     }
 
     match (request.method, request.uri.as_str()) {
         (Method::Get, "/") => Response::new(200, Content::Empty),
-        (Method::Get, "/user-agent") => {
-            let Some(user_agent) = request.headers.get("User-Agent") else {
-                return Response::new(400, Content::Text("No user agent found".into()));
-            };
-            Response::new(200, Content::Text(user_agent.clone()))
-        }
         (_, _) => Response::new(404, Content::Empty),
-    }
-}
-
-fn handle_post_files(config: Arc<Config>, request: Request) -> Response {
-    let mut tokens = request.uri.split("/files/");
-    let Some(filename) = tokens.nth(1) else {
-        return Response::new(400, Content::Text("No filename found".into()));
-    };
-
-    let Some(dir) = &config.directory else {
-        return Response::new(404, Content::Text("No file directory found".into()));
-    };
-
-    let Ok(_) = std::fs::write(format!("{}{}", dir, filename), request.content) else {
-        return Response::new(404, Content::Text("Directory path does not exist".into()));
-    };
-
-    Response::new(201, Content::Empty)
-}
-
-fn handle_files(config: Arc<Config>, request: Request) -> Response {
-    let mut tokens = request.uri.split("/files/");
-    let Some(filename) = tokens.nth(1) else {
-        return Response::new(400, Content::Text("No filename found".into()));
-    };
-
-    match &config.directory {
-        None => Response::new(404, Content::Text("No file directory found".into())),
-        Some(dir) => {
-            let Ok(file) = std::fs::read(format!("{}{}", dir, filename)) else {
-                return Response::new(404, Content::Text("File not found".into()));
-            };
-
-            Response::new(200, Content::OctetStream(file))
-        }
-    }
-}
-
-fn handle_echo(request: Request) -> Response {
-    let mut tokens = request.uri.split("/echo/");
-    match tokens.nth(1) {
-        Some(message) => Response::new(200, Content::Text(message.to_string())),
-        None => Response::new(400, Content::Text(String::from("No string found"))),
     }
 }

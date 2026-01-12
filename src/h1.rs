@@ -124,7 +124,7 @@ pub enum DecodeHttpError {
     #[error("Invalid method.")]
     InvalidMethod(String),
     #[error("Error parsing content.")]
-    InvalidContent,
+    ParsingContentError,
 }
 
 pub fn decode_http_request(buf: &mut BytesMut) -> Result<(Request, usize), DecodeHttpError> {
@@ -133,7 +133,7 @@ pub fn decode_http_request(buf: &mut BytesMut) -> Result<(Request, usize), Decod
         return Err(DecodeHttpError::InvalidHeader);
     };
 
-    // Extract headers as text
+    // extract headers as text
     let Ok(headers) = str::from_utf8(&buf[..headers_end]) else {
         return Err(DecodeHttpError::InvalidHeader);
     };
@@ -180,7 +180,7 @@ pub fn decode_http_request(buf: &mut BytesMut) -> Result<(Request, usize), Decod
         headers_map.get("Content-Length"),
     ) {
         let Ok(content_length_usize) = content_length.parse::<usize>() else {
-            return Err(DecodeHttpError::InvalidContent);
+            return Err(DecodeHttpError::ParsingContentError);
         };
 
         bytes_read += content_length_usize;
