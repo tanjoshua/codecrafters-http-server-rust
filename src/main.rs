@@ -52,16 +52,26 @@ async fn process(
 
         match request {
             Ok((request, bytes_read)) => {
-                buf.advance(bytes_read);
                 println!("{:?} request received at {}", request.method, request.uri);
+
+                // advance buffer
+                buf.advance(bytes_read);
+
                 // get encodings for response before request passed to handler
                 let encodings = request.headers.get("Accept-Encoding").cloned();
+
+                // check whether tcp connection should be persisted
                 let should_close = request
                     .headers
                     .get("Connection")
                     .is_some_and(|v| v == "close");
 
                 let mut response = handle_request(config.clone(), request);
+
+                // set close header
+                if should_close {
+                    response.headers.insert("Connection".into(), "close".into());
+                }
 
                 // set encoding,
                 if let Some(encodings) = encodings
