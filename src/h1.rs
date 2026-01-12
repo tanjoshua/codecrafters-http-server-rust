@@ -127,7 +127,7 @@ pub enum DecodeHttpError {
     InvalidContent,
 }
 
-pub fn decode_http_request(buf: BytesMut) -> Result<Request, DecodeHttpError> {
+pub fn decode_http_request(buf: &mut BytesMut) -> Result<(Request, usize), DecodeHttpError> {
     // find the end of the headers
     let Some(headers_end) = buf.windows(4).position(|w| w == b"\r\n\r\n") else {
         return Err(DecodeHttpError::InvalidHeader);
@@ -174,7 +174,8 @@ pub fn decode_http_request(buf: BytesMut) -> Result<Request, DecodeHttpError> {
     // parse content
     let mut content = Vec::new();
     let content_start = headers_end + 4;
-    if let (Some(content_type), Some(content_length)) = (
+    let mut bytes_read = content_start;
+    if let (Some(_content_type), Some(content_length)) = (
         headers_map.get("Content-Type"),
         headers_map.get("Content-Length"),
     ) {
@@ -182,15 +183,17 @@ pub fn decode_http_request(buf: BytesMut) -> Result<Request, DecodeHttpError> {
             return Err(DecodeHttpError::InvalidContent);
         };
 
-        if content_type == "application/octet-stream" {
-            content.extend_from_slice(&buf[content_start..content_start + content_length_usize]);
-        }
+        bytes_read += content_length_usize;
+        content.extend_from_slice(&buf[content_start..content_start + content_length_usize]);
     }
 
-    Ok(Request {
-        method,
-        uri: request_uri.into(),
-        content,
-        headers: headers_map,
-    })
+    Ok((
+        Request {
+            method,
+            uri: request_uri.into(),
+            content,
+            headers: headers_map,
+        },
+        bytes_read,
+    ))
 }

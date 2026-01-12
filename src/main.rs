@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bytes::BytesMut;
+use bytes::{Buf, BytesMut};
 mod h1;
 use h1::{Content, Method, Request, Response, decode_http_request};
 use tokio::{
@@ -41,32 +41,39 @@ async fn process(
     mut stream: TcpStream,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut buf = BytesMut::with_capacity(4096);
-    stream.read_buf(&mut buf).await?;
 
-    let request = decode_http_request(buf);
-
-    match request {
-        Ok(request) => {
-            println!("{:?} request received at {}", request.method, request.uri);
-            // get encodings for response before request passed to handler
-            let encodings = request.headers.get("Accept-Encoding").cloned();
-
-            let mut response = handle_request(config, request);
-
-            // set encoding,
-            if let Some(encodings) = encodings
-                && encodings.split(",").map(|s| s.trim()).any(|s| s == "gzip")
-            {
-                response.content_encoding = Some(Encoding::Gzip);
-            }
-
-            let response_bytes: Vec<u8> = response.into();
-            if stream.write_all(&response_bytes).await.is_err() {
-                eprintln!("Error writing response");
-            }
+    loop {
+        let n = stream.read_buf(&mut buf).await?;
+        if n == 0 {
+            break;
         }
-        Err(e) => {
-            eprintln!("Error occurred {}", e);
+
+        let request = decode_http_request(&mut buf);
+
+        match request {
+            Ok((request, bytes_read)) => {
+                buf.advance(bytes_read);
+                println!("{:?} request received at {}", request.method, request.uri);
+                // get encodings for response before request passed to handler
+                let encodings = request.headers.get("Accept-Encoding").cloned();
+
+                let mut response = handle_request(config.clone(), request);
+
+                // set encoding,
+                if let Some(encodings) = encodings
+                    && encodings.split(",").map(|s| s.trim()).any(|s| s == "gzip")
+                {
+                    response.content_encoding = Some(Encoding::Gzip);
+                }
+
+                let response_bytes: Vec<u8> = response.into();
+                if stream.write_all(&response_bytes).await.is_err() {
+                    eprintln!("Error writing response");
+                }
+            }
+            Err(e) => {
+                eprintln!("Error occurred {}", e);
+            }
         }
     }
 
