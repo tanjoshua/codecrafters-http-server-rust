@@ -56,6 +56,10 @@ async fn process(
                 println!("{:?} request received at {}", request.method, request.uri);
                 // get encodings for response before request passed to handler
                 let encodings = request.headers.get("Accept-Encoding").cloned();
+                let should_close = request
+                    .headers
+                    .get("Connection")
+                    .is_some_and(|v| v == "close");
 
                 let mut response = handle_request(config.clone(), request);
 
@@ -69,6 +73,11 @@ async fn process(
                 let response_bytes: Vec<u8> = response.into();
                 if stream.write_all(&response_bytes).await.is_err() {
                     eprintln!("Error writing response");
+                }
+
+                // close connection if header was set
+                if should_close {
+                    break;
                 }
             }
             Err(e) => {
